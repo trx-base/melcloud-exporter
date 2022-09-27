@@ -1,0 +1,15 @@
+version: "2.2"
+
+services:
+  melcloud:
+    image: melcloud-exporter
+    container_name: melcloud-exporter
+    restart: unless-stopped
+    ports:
+      - 8020:8020
+    user: "1000"
+    environment:
+      MEL_CLOUD_USER: user@domain.com
+      MEL_CLOUD_PASSWORD: secret_password
+      MEL_CLOUD_PORT: 8020
+      MEL_CLOUD_PORT_INTERVAL: 60
