@@ -118,22 +118,22 @@ class MelCloudMetrics:
 def main():
     """Main entry point"""
     try:
-        polling_interval_seconds = os.environ['mel_cloud_poll_interval']
+        polling_interval_seconds = int(os.environ['MEL_CLOUD_PORT_INTERVAL'])
     except:
         polling_interval_seconds = 120
 
     try:
-        port = os.environ['mel_cloud_port']
+        port = int(os.environ['MEL_CLOUD_PORT'])
     except:
         port = 8020
 
     try:
-        mel_cloud_user = os.environ['mel_cloud_user']
+        mel_cloud_user = os.environ['MEL_CLOUD_USER']
     except:
         mel_cloud_user = "user"
 
     try:
-        mel_cloud_password = os.environ['mel_cloud_password']
+        mel_cloud_password = os.environ['MEL_CLOUD_PASSWORD']
     except:
         mel_cloud_password = "password"
 
