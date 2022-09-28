@@ -58,7 +58,7 @@ class MelCloudMetrics:
     async def retrieve_mel_cloud_data(self):
         async with aiohttp.ClientSession() as session:
             # call the login method with the session
-            token = await pymelcloud.login("sse@gmx.de", "Geheim170707!", session=session)
+            token = await pymelcloud.login(self.mel_cloud_user, self.mel_cloud_password, session=session)
 
             # lookup the device
             devices = await pymelcloud.get_devices(token, session=session)
