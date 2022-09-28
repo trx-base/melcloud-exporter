@@ -27,21 +27,31 @@ __status__ = "Production"
 ###########################################################################################################
 """
 
-import asyncio
 import os
 import time
-import aiohttp
-import pymelcloud
+import json
+import requests
+import datetime
 from prometheus_client import start_http_server, Gauge, Info, Enum
 
 
 class MelCloudMetrics:
+    headers = {
+        "Content-Type": "application/json",
+        "Host": "app.melcloud.com",
+        "Cache-Control": "no-cache"
+    }
 
     def __init__(self, polling_interval_seconds, mel_cloud_user, mel_cloud_password):
         self.polling_interval_seconds = polling_interval_seconds
         self.mel_cloud_user = mel_cloud_user
         self.mel_cloud_password = mel_cloud_password
 
+        self.data = {
+            "Email": self.mel_cloud_user,
+            "Password": self.mel_cloud_password,
+            "AppVersion": "1.23.4.0"
+        }
         # Prometheus' metrics to collect
         self.device_name = Info("device_name", "Device Name")
         self.power = Enum('power_state', 'Power Status', ['room'], states=['on', 'off'])
@@ -51,72 +61,68 @@ class MelCloudMetrics:
         self.target_temperature = Gauge("target_temperature", "Target Temperature", ['room'])
         self.operation_mode = Enum('operation_mode', 'Operation Mode', ['room'],
                                    states=["heat", "dry", "cool", "fan_only", "heat_cool", "undefined"])
-        self.fan_speed = Enum('fan_speed', 'Fan Speed', ['room'], states=["1", "2", "3", "4", "5", "auto"])
-        self.vane_horizontal = Enum('vane_horizontal', 'Vane Horizontal', ['room'], states=["1", "2", "3", "4", "5", "1_left", "5_right", "auto"])
-        self.vane_vertical = Enum('vane_vertical', 'Vane Vertical', ['room'], states=["1", "2", "3", "4", "5", "1_up", "5_down", "auto"])
+        self.fan_speed = Gauge('fan_speed', 'Fan Speed', ['room'])
+        self.vane_horizontal = Gauge('vane_horizontal', 'Vane Horizontal', ['room'])
+        self.vane_vertical = Gauge('vane_vertical', 'Vane Vertical', ['room'])
 
-    async def retrieve_mel_cloud_data(self):
-        async with aiohttp.ClientSession() as session:
-            # call the login method with the session
-            token = await pymelcloud.login(self.mel_cloud_user, self.mel_cloud_password, session=session)
+    def retrieve_mel_cloud_data(self):
+        timestamp = datetime.datetime.now().strftime("%d-%b-%Y (%H:%M:%S)")
+        try:
+            # try to get token
+            url = 'https://app.melcloud.com/Mitsubishi.Wifi.Client/Login/ClientLogin'
+            response = requests.post(url, headers=self.headers, data=json.dumps(self.data))
+            out = json.loads(response.text)
+            token = out['LoginData']['ContextKey']
+            self.headers["X-MitsContextKey"] = token
+        except Exception as err:
+            print(timestamp + ": Not able to get token: " + str(err))
 
-            # lookup the device
-            devices = await pymelcloud.get_devices(token, session=session)
-            #device = devices[pymelcloud.DEVICE_TYPE_ATA][0]
+        try:
+            # try to get device data
+            url = 'https://app.melcloud.com/Mitsubishi.Wifi.Client/User/Listdevices'
+            response = requests.get(url, headers=self.headers, data=json.dumps(self.data))
+            out = json.loads(response.text)
+            devices = out[0]['Structure']['Devices']
+        except Exception as err:
+            print(timestamp + ": Not able to get device data: " + str(err))
 
-            for device in devices[pymelcloud.DEVICE_TYPE_ATA]:
-                # perform logic on the device
-                await device.update()
-                room = device.name
+        for device in devices:
+            room = device['DeviceName']
 
-                self.device_name.info({"device_name": device.name})
+            self.device_name.info({"device_name": room})
 
-                if device.power:
-                    self.power.labels(room).state("on")
-                else:
-                    self.power.labels(room).state("off")
+            print(device['Device']['Power'])
+            if device['Device']['Power']:
+                self.power.labels(room).state("on")
+            else:
+                self.power.labels(room).state("off")
 
-                # noinspection PyUnresolvedReferences
-                self.total_energy_consumed.labels(room).set(device.total_energy_consumed)
-                self.wifi_signal.labels(room).set(device.wifi_signal)
-                # noinspection PyUnresolvedReferences
-                self.room_temperature.labels(room).set(device.room_temperature)
-                # noinspection PyUnresolvedReferences
-                self.target_temperature.labels(room).set(device.target_temperature)
-                # noinspection PyUnresolvedReferences
-                self.operation_mode.labels(room).state(device.operation_mode)
-                # noinspection PyUnresolvedReferences
-                self.fan_speed.labels(room).state(device.fan_speed)
-                # noinspection PyUnresolvedReferences
-                self.vane_horizontal.labels(room).state(device.vane_horizontal)
-                # noinspection PyUnresolvedReferences
-                self.vane_vertical.labels(room).state(device.vane_vertical)
+            self.total_energy_consumed.labels(room).set(device['Device']['CurrentEnergyConsumed'])
+            self.wifi_signal.labels(room).set(device['Device']['WifiSignalStrength'])
 
-                # print(device.name)
-                # print(device.units)
-                # print(device.temp_unit)
-                # print(device.last_seen)
-                # print(device.power)
-                # print(device.total_energy_consumed)
-                # print(device.wifi_signal)
-                # print(device.room_temperature)
-                # print(device.target_temperature)
-                # print(device.operation_mode)
-                # print(device.fan_speed)
-                # print(device.vane_horizontal)
-                # print(device.vane_vertical)
-            await session.close()
+            self.room_temperature.labels(room).set(device['Device']['RoomTemperature'])
+            self.target_temperature.labels(room).set(device['Device']['SetTemperature'])
+
+            # 1: Heating, 2: Drying, 3: Cooling, 7: Van, 8: Auto
+            if device['Device']['OperationMode'] == 1:
+                self.operation_mode.labels(room).state("heat")
+            if device['Device']['OperationMode'] == 2:
+                self.operation_mode.labels(room).state("dry")
+            if device['Device']['OperationMode'] == 3:
+                self.operation_mode.labels(room).state("cool")
+            if device['Device']['OperationMode'] == 7:
+                self.operation_mode.labels(room).state("fan_only")
+            if device['Device']['OperationMode'] == 8:
+                self.operation_mode.labels(room).state("heat_cool")
+
+            self.fan_speed.labels(room).set(device['Device']['FanSpeed'])
+            self.vane_horizontal.labels(room).set(device['Device']['VaneVerticalDirection'])
+            self.vane_vertical.labels(room).set(device['Device']['VaneHorizontalSwing'])
 
     def run_metrics_loop(self):
         while True:
-            self.fetch()
+            self.retrieve_mel_cloud_data()
             time.sleep(self.polling_interval_seconds)
-
-
-    def fetch(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.retrieve_mel_cloud_data())
 
 
 def main():
@@ -124,7 +130,7 @@ def main():
     try:
         polling_interval_seconds = int(os.environ['MEL_CLOUD_PORT_INTERVAL'])
     except:
-        polling_interval_seconds = 120
+        polling_interval_seconds = 10
 
     try:
         port = int(os.environ['MEL_CLOUD_PORT'])
@@ -141,9 +147,10 @@ def main():
     except:
         mel_cloud_password = "password!"
 
-    app_metrics = MelCloudMetrics(polling_interval_seconds, mel_cloud_user, mel_cloud_password )
+    app_metrics = MelCloudMetrics(polling_interval_seconds, mel_cloud_user, mel_cloud_password)
     start_http_server(port)
     app_metrics.run_metrics_loop()
+
 
 if __name__ == "__main__":
     main()
