@@ -23,4 +23,3 @@ jobs:
       run: docker build . --file Dockerfile --tag schluo/melcloud_exporter:latest
     - name: Docker Push
       run: docker push schluo/melcloud_exporter:latest
-
