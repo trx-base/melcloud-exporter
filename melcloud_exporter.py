@@ -66,59 +66,71 @@ class MelCloudMetrics:
         self.vane_vertical = Gauge('vane_vertical', 'Vane Vertical', ['room'])
 
     def retrieve_mel_cloud_data(self):
+        error = False
         timestamp = datetime.datetime.now().strftime("%d-%b-%Y (%H:%M:%S)")
         try:
             # try to get token
             url = 'https://app.melcloud.com/Mitsubishi.Wifi.Client/Login/ClientLogin'
             response = requests.post(url, headers=self.headers, data=json.dumps(self.data))
             out = json.loads(response.text)
-            token = out['LoginData']['ContextKey']
-            self.headers["X-MitsContextKey"] = token
+            if out['LoginStatus'] == 0:
+                print("Login not successful")
+                error = True
+            else:
+                token = out['LoginData']['ContextKey']
+                self.headers["X-MitsContextKey"] = token
         except Exception as err:
             print(timestamp + ": Not able to get token: " + str(err))
+            error = True
 
-        try:
-            # try to get device data
-            url = 'https://app.melcloud.com/Mitsubishi.Wifi.Client/User/Listdevices'
-            response = requests.get(url, headers=self.headers, data=json.dumps(self.data))
-            out = json.loads(response.text)
-            devices = out[0]['Structure']['Devices']
-        except Exception as err:
-            print(timestamp + ": Not able to get device data: " + str(err))
+        if not error:
+            try:
+                # try to get device data
+                url = 'https://app.melcloud.com/Mitsubishi.Wifi.Client/User/Listdevices'
+                response = requests.get(url, headers=self.headers, data=json.dumps(self.data))
+                out = json.loads(response.text)
+                devices = out[0]['Structure']['Devices']
+            except Exception as err:
+                print(timestamp + ": Not able to get device data: " + str(err))
+                error = True
 
-        for device in devices:
-            room = device['DeviceName']
+            if not error:
+                try:
+                    for device in devices:
+                        room = device['DeviceName']
 
-            self.device_name.info({"device_name": room})
+                        self.device_name.info({"device_name": room})
 
-            print(device['Device']['Power'])
-            if device['Device']['Power']:
-                self.power.labels(room).state("on")
-            else:
-                self.power.labels(room).state("off")
+                        print(device['Device']['Power'])
+                        if device['Device']['Power']:
+                            self.power.labels(room).state("on")
+                        else:
+                            self.power.labels(room).state("off")
 
-            self.total_energy_consumed.labels(room).set(device['Device']['CurrentEnergyConsumed'])
-            self.wifi_signal.labels(room).set(device['Device']['WifiSignalStrength'])
+                        self.total_energy_consumed.labels(room).set(device['Device']['CurrentEnergyConsumed'])
+                        self.wifi_signal.labels(room).set(device['Device']['WifiSignalStrength'])
 
-            self.room_temperature.labels(room).set(device['Device']['RoomTemperature'])
-            self.target_temperature.labels(room).set(device['Device']['SetTemperature'])
+                        self.room_temperature.labels(room).set(device['Device']['RoomTemperature'])
+                        self.target_temperature.labels(room).set(device['Device']['SetTemperature'])
 
-            # 1: Heating, 2: Drying, 3: Cooling, 7: Van, 8: Auto
-            if device['Device']['OperationMode'] == 1:
-                self.operation_mode.labels(room).state("heat")
-            if device['Device']['OperationMode'] == 2:
-                self.operation_mode.labels(room).state("dry")
-            if device['Device']['OperationMode'] == 3:
-                self.operation_mode.labels(room).state("cool")
-            if device['Device']['OperationMode'] == 7:
-                self.operation_mode.labels(room).state("fan_only")
-            if device['Device']['OperationMode'] == 8:
-                self.operation_mode.labels(room).state("heat_cool")
+                        # 1: Heating, 2: Drying, 3: Cooling, 7: Van, 8: Auto
+                        if device['Device']['OperationMode'] == 1:
+                            self.operation_mode.labels(room).state("heat")
+                        if device['Device']['OperationMode'] == 2:
+                            self.operation_mode.labels(room).state("dry")
+                        if device['Device']['OperationMode'] == 3:
+                            self.operation_mode.labels(room).state("cool")
+                        if device['Device']['OperationMode'] == 7:
+                            self.operation_mode.labels(room).state("fan_only")
+                        if device['Device']['OperationMode'] == 8:
+                            self.operation_mode.labels(room).state("heat_cool")
 
-            self.fan_speed.labels(room).set(device['Device']['FanSpeed'])
-            self.vane_horizontal.labels(room).set(device['Device']['VaneVerticalDirection'])
-            self.vane_vertical.labels(room).set(device['Device']['VaneHorizontalSwing'])
-
+                        self.fan_speed.labels(room).set(device['Device']['FanSpeed'])
+                        self.vane_horizontal.labels(room).set(device['Device']['VaneVerticalDirection'])
+                        self.vane_vertical.labels(room).set(device['Device']['VaneHorizontalSwing'])
+                except Exception as err:
+                    print(timestamp + ": Not able to get read values: " + str(err))
+                    error = True
     def run_metrics_loop(self):
         while True:
             self.retrieve_mel_cloud_data()
