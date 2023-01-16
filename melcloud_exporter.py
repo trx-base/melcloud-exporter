@@ -73,7 +73,7 @@ class MelCloudMetrics:
             url = 'https://app.melcloud.com/Mitsubishi.Wifi.Client/Login/ClientLogin'
             response = requests.post(url, headers=self.headers, data=json.dumps(self.data))
             out = json.loads(response.text)
-            if out['LoginStatus'] == 0:
+            if out['LoginStatus'] != 0:
                 print("Login not successful")
                 error = True
             else:
