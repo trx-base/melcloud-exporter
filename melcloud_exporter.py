@@ -126,7 +126,7 @@ def main():
     try:
         metric_prefix = os.environ['METRIC_PREFIX']
     except:
-        metric_prefix = "MC"
+        metric_prefix = "melcloud"
 
     app_metrics = MelCloudMetrics(polling_interval_seconds, mel_cloud_user, mel_cloud_password, metric_prefix)
     start_http_server(port)
