@@ -2,7 +2,7 @@ version: "2.2"
 
 services:
   melcloud:
-    image: melcloud-exporter
+    image: detwald/melcloud-exporter:latest
     container_name: melcloud-exporter
     restart: unless-stopped
     ports:
