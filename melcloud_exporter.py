@@ -35,10 +35,11 @@ class MelCloudMetrics:
         "Cache-Control": "no-cache"
     }
 
-    def __init__(self, polling_interval_seconds, mel_cloud_user, mel_cloud_password):
+    def __init__(self, polling_interval_seconds, mel_cloud_user, mel_cloud_password, metric_prefix):
         self.polling_interval_seconds = polling_interval_seconds
         self.mel_cloud_user = mel_cloud_user
         self.mel_cloud_password = mel_cloud_password
+        self.metric_prefix = metric_prefix
 
         self.data = {
             "Email": self.mel_cloud_user,
@@ -49,7 +50,7 @@ class MelCloudMetrics:
 
     def create_or_get_metric(self, name, description, room):
         if name not in self.metrics:
-            self.metrics[name] = Gauge(name, description, ['room'])
+            self.metrics[name] = Gauge(self.metric_prefix + "_" + name, description, ['room'])
 
         return self.metrics[name].labels(room)
 
@@ -122,7 +123,12 @@ def main():
     except:
         mel_cloud_password = "password!"
 
-    app_metrics = MelCloudMetrics(polling_interval_seconds, mel_cloud_user, mel_cloud_password)
+    try:
+        metric_prefix = os.environ['METRIC_PREFIX']
+    except:
+        metric_prefix = "MC"
+
+    app_metrics = MelCloudMetrics(polling_interval_seconds, mel_cloud_user, mel_cloud_password, metric_prefix)
     start_http_server(port)
     app_metrics.run_metrics_loop()
 
